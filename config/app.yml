@@ -1,0 +1,11 @@
+all:
+  afBenchmarkPlugin:
+    size_unit: KB 
+    time_unit: ms
+    use_cache: true
+    url: http://localhost:8080/
+    username: admin
+    password: admin
+    application: frontend
+    env: prod
+  
