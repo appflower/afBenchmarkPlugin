@@ -2,11 +2,12 @@
 
 class afCurlRequest {
 	
-	protected 
+	private 
 		$status_data,
 		$handle,
 		$config,
-		$response;
+		$response,
+		$headers = array();
 		
 		
 	public function __construct(stdClass $config = null)
@@ -15,9 +16,11 @@ class afCurlRequest {
   		$root = ProjectConfiguration::getActive()->getPluginConfiguration("afBenchmarkPlugin")->getRootDir();
   		
   		if(!$this->handle = curl_init()) {
-  			throw new Exception("Couldn't initialize browser!");
-  		}
-  
+  			throw new sfCommandException("Couldn't initialize browser!");
+  		}  else if(!file_exists($root."/config/http.ini")) {
+  			throw new sfCommandException("Couldn't find http.ini in config dir!");
+  		} 
+  		
   		$this->status_data = parse_ini_file($root."/config/http.ini");
   		
   		curl_setopt($this->handle, CURLOPT_RETURNTRANSFER, true);
@@ -30,6 +33,8 @@ class afCurlRequest {
 		curl_setopt($this->handle, CURLOPT_FOLLOWLOCATION, 1); 
 		curl_setopt($this->handle, CURLOPT_USERAGENT, "AF Benchmark"); 
 		curl_setopt($this->handle, CURLOPT_CONNECTTIMEOUT, 30);
+		curl_setopt($this->handle, CURLOPT_HEADERFUNCTION, array(&$this,"processHeaders"));
+		curl_setopt($this->handle, CURLOPT_SSL_VERIFYHOST, 0);
 		
 		if(!$config) {
 			$this->config->time_unit = "s";
@@ -42,35 +47,62 @@ class afCurlRequest {
 		
 		
   	}
+  	
+  	private function processHeaders($handle,$header) {
+  	
+  		if(strstr($header,":")) {
+  			$k = strtok($header, ":");
+  			$v = strtok(":");
+  		} else {
+  			$k = "status";
+  			$v = $header;
+  		}
+  		
+  		if(trim($header)) {
+  			$this->headers[$k] = $v;	
+  		}
+  		
+  		return strlen($header);
+  	}
+  	
+  	private function request() {
+  		
+  		$this->response = curl_exec($this->handle);
+  		if(($err = curl_error($this->handle))) {
+			throw new sfCommandException("An error has occured: ".$err);
+		}
+  	
+  	}
 
+  	
+	public function getHeaders() {
+		
+		return $this->headers;
+		
+	}
+  	
 	public function get($url) {
 		
 		if(!trim($url)) {
-			throw new Exception("The URL parameter is mandatory!");
+			throw new sfCommandException("The URL parameter is mandatory!");
 		}
 		
 		curl_setopt($this->handle, CURLOPT_URL, $url);
-		$this->response = curl_exec($this->handle);
+		$this->request();
 		
 	}
   	
 	
-	public function getFoo($url) {
-		
-		curl_setopt($this->handle, CURLOPT_COOKIESESSION, TRUE);
-		
-	}
-	
 	public function post($url,$data) {
 		
 		if(empty($data)) {
-			throw new Exception("At least 1 post parameter must be defined!");
+			throw new sfCommandException("At least 1 post parameter must be defined!");
 		}
 		
 		curl_setopt($this->handle, CURLOPT_URL, $url);
 		curl_setopt($this->handle, CURLOPT_POST, true);
 		curl_setopt($this->handle, CURLOPT_POSTFIELDS, $data);
-		$this->response = curl_exec($this->handle);
+		$this->request();
 	
 	}
 	
@@ -93,7 +125,22 @@ class afCurlRequest {
 	
 	} 
 	
-	public function getResponseSize() {
+	public function getError() {
+		
+		return curl_error($this->handle);
+	
+	} 
+	
+	
+	public function restart() {
+		
+		$this->shutdown();
+		return new afCurlRequest($this->config);
+	
+	} 
+	
+	
+	public function getResponseSize($numeric = false) {
 	
 		
 		$value = curl_getinfo($this->handle,CURLINFO_SIZE_DOWNLOAD);
@@ -107,12 +154,12 @@ class afCurlRequest {
 				break;
 		}
 	  	
-	  	return $res.$this->config->size_unit;
+	  	return ($numeric) ? $res : $res.$this->config->size_unit;
 		
 	
 	}
 	
-	public function getResponseTime() {
+	public function getResponseTime($numeric = false) {
 		
 		
 		$value = curl_getinfo($this->handle,CURLINFO_TOTAL_TIME);
@@ -126,7 +173,7 @@ class afCurlRequest {
 	  			break;
 	  	}
 	  	
-	  	return $res.$this->config->time_unit;
+	  	return ($numeric) ? $res : $res.$this->config->time_unit;
 		
 	
 	}
@@ -150,9 +197,6 @@ class afCurlRequest {
 	
 	}
 	
-	public function getResponse() {
-		return $this;
-	}
 	
 	public function getResponseBody() {
 		return $this->response;

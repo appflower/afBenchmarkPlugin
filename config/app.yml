@@ -8,4 +8,7 @@ all:
     password: admin
     application: frontend
     env: prod
+    csrf: true
+    layouts: false
+    profiling: true
   
