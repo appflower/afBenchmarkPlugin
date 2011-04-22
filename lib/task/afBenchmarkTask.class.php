@@ -192,7 +192,8 @@ EOF;
   		if(!isset($headers["X-Debug-Token"])) {
   			throw new sfCommandException("Profiler is not running, please turn off this option!");	
   		} else {
-  			$this->profiler = afProfiler::create();	
+            require_once dirname(dirname(dirname(__DIR__))).'/afProfilerPlugin/lib/afProfiler.class.php';
+  		    $this->profiler = afProfiler::create();
   		}
   	} 
   	
@@ -321,14 +322,14 @@ EOF;
 				continue;
 			}
 			
-			$uri = "/".$entry.(($options["params"]) ? ("?".$options["params"]) : "?");
+			$uri = "/".$entry.((@$options["params"]) ? ("?".$options["params"]) : "?");
 	  		
 	  		if($ajax) {
 	  			$uri .= "&widget_load=true";
 	  		}
 	  		
 	  		$this->browser->get($this->config->url.$uri);
-			file_put_contents("./foo/".$widget, $this->browser->getResponseBody());
+//			file_put_contents("./foo/".$widget, $this->browser->getResponseBody());
 	  		$this->totals[$this->browser->getStatusCode()][] = $this->browser->getStatusMessage();
 	  		$execTimeNumber = $this->browser->getResponseTime(true);
 	  		$execTime = $execTimeNumber.$this->config->time_unit;
