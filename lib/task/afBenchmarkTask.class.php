@@ -15,6 +15,7 @@
 
 /**
  * This task runs one or more widgets and generates benchmarking results, optionally with profiling details.
+ * It also generates SF cache in the meantime. Can be used to benchmark the local or any remore AF application.
  */
 class afBenchmarkTask extends sfBaseTask
 {
@@ -24,7 +25,7 @@ class afBenchmarkTask extends sfBaseTask
   	$context,
 	$profiledata,
 	$browser,
-	$totals = array("totaltime" => 0),
+	$totals = array("widgettotaltime" => 0, "layouttotaltime" => 0, "widgets" => 0, "layouts" => 0, "true" => 0, "false" => 0),
   	$stamp,
   	$processed = array(),
   	$config,
@@ -37,50 +38,86 @@ class afBenchmarkTask extends sfBaseTask
   {
   	
   	$this->addArguments(array(
-  	  new sfCommandArgument('widget', sfCommandArgument::OPTIONAL, 'The URI of the widget to execute','*'),
+  	  new sfCommandArgument('widget', sfCommandArgument::OPTIONAL, 'The URI of the widget / layout to benchmark','*'),
   	));
     
   	$this->addOptions(array(
   	  new sfCommandOption('params', null, sfCommandOption::PARAMETER_OPTIONAL, 'Optional request parameters', ''),
   	  new sfCommandOption('profiling', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether to collect profiling data', ''),
-  	  new sfCommandOption('username', null, sfCommandOption::PARAMETER_OPTIONAL, 'User login', ''),
-  	  new sfCommandOption('password', null, sfCommandOption::PARAMETER_OPTIONAL, 'User password', ''),
-      new sfCommandOption('url', null, sfCommandOption::PARAMETER_OPTIONAL, 'The URL of the AF appliance', ''),
+  	  new sfCommandOption('username', null, sfCommandOption::PARAMETER_OPTIONAL, 'User login for secured apps', ''),
+  	  new sfCommandOption('password', null, sfCommandOption::PARAMETER_OPTIONAL, 'User password for secured apps', ''),
+      new sfCommandOption('url', null, sfCommandOption::PARAMETER_OPTIONAL, 'The URL of the AF appliance you wanna benchmark', ''),
       new sfCommandOption('time_unit', null, sfCommandOption::PARAMETER_OPTIONAL, 'Show execution times as..', ''),
       new sfCommandOption('size_unit', null, sfCommandOption::PARAMETER_OPTIONAL, 'Show response sizes as..', ''),
       new sfCommandOption('use_cache', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether to use SF cache', ''),
-      new sfCommandOption('application', null, sfCommandOption::PARAMETER_OPTIONAL, 'The SF application to use', 'frontend'),
-      new sfCommandOption('env', null, sfCommandOption::PARAMETER_OPTIONAL, 'The SF environment to use', 'prod'),
-      new sfCommandOption('csrf', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether there is a CSRF filter', ''),
-      new sfCommandOption('layouts', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether to process layouts', ''),
+      new sfCommandOption('application', null, sfCommandOption::PARAMETER_OPTIONAL, 'The SF application', 'frontend'),
+      new sfCommandOption('env', null, sfCommandOption::PARAMETER_OPTIONAL, 'The SF environment', 'prod'),
+      new sfCommandOption('csrf', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether there is a CSRF filter to bypass', ''),
+      new sfCommandOption('layouts', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether to process layouts when benchmarking the entire app', ''),
     ));
     
     $this->namespace = 'appflower';
     $this->name = 'benchmark';
-    $this->briefDescription = 'The task provides profiling information for one or more widgets';
+    $this->briefDescription = 'The task benchmarks AF widgets and layouts';
 
     $this->detailedDescription = <<<EOF
-This task executes the widget and prints profiling information about it.
+This task executes one or more AF widgets or layouts and provides benchmarking information. It can be used to benchmark one widget, an 
+entire module or the whole AF application.
 
-* The widget parameter should be a valid SF internal URI. If the URI points to a layout view, all associated widgets will be profiled. 
-It is also possible to use the wildcard "*" in which case the whole application (all widgets and layouts) will be profiled.
+If afProfilerPlugin is installed, it can display profiling results as well. See the "profiling" option.
 
-* The verbosity parameter controls the amount of information collected about each processed widget. The "totals" setting will print
-total execution time only. The "details" setting will print times for all processing phases, while the "sql" setting will show you
-the same as "details", but adds a list of the SQL queries performed along with their execution time. 
+Before using the plugin, make sure the "url", "username", "password" and "csrf" values are correctly set in app.yml or supply these
+on the command-line.
 
-* The params argument allows you to supply one or more parameters for the widget. These will be passed as request parameters.
-  The expected value is a query string.
+About the arguments:
+
+* The "widget" argument should be a valid SF internal URI. If the URI points to a layout view, all associated widgets will be benchmarked.
+The URI may also contain the '*' wildcard as widget name (i.e.: foo/*). In such a case all widgets in the given module will be processed.
+If you omit the "widget" argument or use the '*' value, the whole application (all widgets and layouts) will be processed.
+
+About the options:
+
+All these options are available in the plugin's app.yml. You should use the command-line versions for overriding the config values only!
+
+* The "params" option allows you to supply one or more parameters to be passed with the request.
+  The expected value is a query string and this option should be used only when you're benchmarking a single widget.
   
-* The application and env options allow you to specify which SF application and environment to use, respectively.
+* The "profiling" option should be set to true or false. When its value is true, a more detailed result will be displayed, since profiling data will be
+also included. Please note that this requires the afProfilerPlugin to be installed.
+
+* The "username" and "password" options should be used if the AF application is secured. If you don't need this, simply
+empty their values in app.yml. Please note that this works only if authentication was implemented using afGuardPlugin. 
+
+* The "url" parameter should point to the AF application you want to work with. If you're benchmarking the current application, you may
+use the value "local". Otherwise a HTTP / HTTPS URL is expected, with port number (if needed).
+
+* The "time_unit" option determines how execution times are measured. Valid values are "s" (seconds) or "ms" (microseconds).
+
+* The "size_unit" option controls how the response sizes are calculated. Valid values are "B" (bytes") or "KB" (kilobytes).
+
+* The "use_cache" option should be set to false if you want SF cache to be cleared before benchmarking.
+
+* The "application" and "env" options are names of the SF application and environment, respectively. If you are benchmarking a 
+remote application, leave the default values intact.
+
+* The "csrf" option's value should be set to true if your application uses CSRF protection. 
+
+* The "layouts" option should be enabled, if you want layouts to be processed as well as widgets when doing full benchmarking (app).
+
 
 Examples:
 
-[symfony appflower:benchmark users/edit --params=foo=bar&bar=1]
+To benchmark a single widget (and override some config options):
 
-[symfony appflower:benchmark * --application=my]
+[symfony appflower:benchmark users/edit]
 
-[symfony appflower:benchmark * --verbosity=details]
+To benchmark all widgets in a module:
+
+[symfony appflower:benchmark users/*]
+
+To benchmark the entire app:
+
+[symfony appflower:benchmark]
    
 EOF;
   	
@@ -114,6 +151,19 @@ EOF;
   		}
   	}
   	
+  	if(!$this->config->url) {
+  		$this->config->url = "http://localhost/";
+  	}
+  	
+  	preg_match("/\/([^\/:]+)/", $this->config->url,$m);
+  	
+  	if(!isset($m[1]) || !$m[1]) {
+  		throw new sfCommandException(sprintf("The value '%s' is invalid URL! Please specify in prot://host format!",$this->config->url));
+  	}
+  
+  	$this->config->ip = trim($m[1]);
+  	$this->config->remote = $this->config->ip == "127.0.0.1";
+  	
   	$this->config->limit = ($this->config->time_unit == "ms") ? 1000 : 1;
   	
   	if(!in_array($this->config->time_unit,$time_units)) {
@@ -123,6 +173,8 @@ EOF;
   	} else if(!$this->config->url) {
   		throw new sfCommandException("The URL parameter is not defined!");
   	} 
+  	
+  	error_reporting(0);
   	
   	// Init context..
   	
@@ -182,7 +234,7 @@ EOF;
   	$this->browser = new afCurlRequest($this->config);
   	
   	$this->logSection("Started at: ".date("Y-m-d H:i:s",$this->stamp),null,null,"INFO");
-  	$this->logSection("Connecting to ".$this->config->url,null,null,"INFO");
+  	$this->logSection("Connecting to ".$this->config->url." (".gethostbyname($this->config->ip).")",null,null,"INFO");
   	
   	$this->browser->get($this->config->url);
   	
@@ -206,7 +258,7 @@ EOF;
   		}
   	}
   	
-  	$this->logSection("Signing in user..",null,null,"INFO");
+  	$this->logSection("Authenticating..",null,null,"INFO");
   	$this->logBlock(" ",null);
   	
   	if($this->config->username && $this->config->password) {
@@ -236,14 +288,24 @@ EOF;
   		$w += count($totals);
   	}
   	
+  	$this->logBlock(" ",null);
   	$overtime = isset($this->totals["overtime"]) ? count($this->totals["overtime"]) : 0;
   	
-  	if($overtime) {
-  		$this->logBlock(sprintf("%d entries took more than ".$this->config->limit.$this->config->time_unit." to run.",$overtime),"INFO");
+  	$this->logSection(sprintf("Executed %d items in %s%s",$this->totals["widgets"]+$this->totals["layouts"],$this->totals["widgettotaltime"]+$this->totals["layouttotaltime"],$this->config->time_unit),null,null,"INFO");
+  		
+  	if($this->totals["false"]) {
+  		$this->logSection(sprintf("%d requests were unsuccessful!",$this->totals["false"]),null,null,"ERROR");
   	}
   	
-  	$this->logSection(sprintf("Executed %d widgets in %s%s",$w,$this->totals["totaltime"],$this->config->time_unit),null,null,"INFO");
-  	$this->logSection(sprintf("Average execution time was: %1.2f%s",($this->totals["totaltime"] / $w),$this->config->time_unit),null,null,"INFO");
+    if($overtime) {
+  		$this->logSection(sprintf("%d widgets took more than ".$this->config->limit.$this->config->time_unit." to run.",$overtime),null,null,"INFO");
+  	}
+  	
+  	$this->logSection(sprintf("Average widget execution time was: %1.2f%s",($this->totals["widgettotaltime"] / $this->totals["widgets"]),$this->config->time_unit),null,null,"INFO");
+  	
+  	if($this->totals["layouts"]) {
+  		$this->logSection(sprintf("Average layout execution time was: %1.2f%s",($this->totals["layouttotaltime"] / $this->totals["layouts"]),$this->config->time_unit),null,null,"INFO");	
+  	}
   	
   }
   
@@ -256,7 +318,7 @@ EOF;
   	
   	$max = $this->maxwidth-22;
   	
-  	$text = "Widget".str_repeat(" ", $max)."Status    Time    Data";
+  	$text = "Widget".str_repeat(" ", $max)."Status    Valid    Time    Data";
   	$this->logBlock(" ",null);	
   	$this->logBlock($text,null);	
   	$this->logBlock(str_repeat("-", strlen($text)),null);
@@ -294,7 +356,6 @@ EOF;
   		$widgets = $this->widgets;
   	}
   	
-	$w = 0;
 	$max = $this->maxwidth-22;
 	
 	if(!$layout) {
@@ -321,7 +382,7 @@ EOF;
 				continue;
 			}
 			
-			$uri = "/".$entry.(($options["params"]) ? ("?".$options["params"]) : "?");
+			$uri = "/".$entry.(($this->config->params) ? ("?".urlencode($this->config->params)) : "?");
 	  		
 	  		if($ajax) {
 	  			$uri .= "&widget_load=true";
@@ -332,22 +393,27 @@ EOF;
 	  		$this->totals[$this->browser->getStatusCode()][] = $this->browser->getStatusMessage();
 	  		$execTimeNumber = $this->browser->getResponseTime(true);
 	  		$execTime = $execTimeNumber.$this->config->time_unit;
+	  		$valid = $this->browser->isValidRequest($ajax);
 	  		
-	  		if(str_replace($this->config->time_unit, "", $execTimeNumber) > $this->config->limit) {
+	  		if(str_replace($this->config->time_unit, "", $execTimeNumber) > $this->config->limit && $ajax) {
 	  			$this->totals["overtime"][] = $entry;
 	  		}
 	  		
-	  		$this->totals["totaltime"] += $execTimeNumber;
-	  		
 	  		if($ajax) {
 	  			$this->processed[] = $entry;	
-	  		}
+	  			$this->totals["widgettotaltime"] += $execTimeNumber;
+	  			++$this->totals["widgets"];
+	  		} else {
+	  			$this->totals["layouttotaltime"] += $execTimeNumber;
+	  			++$this->totals["layouts"];
+	  		}	  	
+
+	  		++$this->totals[$valid];
 	  		
-	  		$this->logBlock($entry.str_repeat(" ",$max - (strlen($module."/".$widget)-6)).$this->browser->getStatusCode().str_repeat(" ",7).$execTime.str_repeat(" ",8-strlen($execTime)).$this->browser->getResponseSize(),null);
+	  		$this->logBlock($entry.str_repeat(" ",$max - (strlen($module."/".$widget)-6)).$this->browser->getStatusCode().str_repeat(" ",7).$valid.str_repeat(" ",9-strlen($valid)).$execTime.str_repeat(" ",8-strlen($execTime)).$this->browser->getResponseSize(),null);
 	  		
-	  		$w++;
-	  		
-	  		if($header && $k == count($entries)-1) {
+	  		if($ajax && $header && $k == count($entries)-1) {
+	  			$this->logBlock(" ",null);
 	  			$this->printHeader();
 	  		}
 	  		
@@ -357,8 +423,6 @@ EOF;
 		  	}
 	  	}
 	 }
-	 
-	 return $w;
   }
   
   
@@ -375,7 +439,7 @@ EOF;
   	$this->browser->post($this->config->url."/login","signin[username]=".$this->config->username."&signin[password]=".$this->config->password."&signin[remember]=on");
   	$response = json_decode($this->browser->getResponseBody());
   	
-  	if($this->browser->getStatusCode() != 200 || $this->browser->isValid() === null) {
+  	if($this->browser->getStatusCode() != 200 || $this->browser->contentSent() === null) {
   		throw new sfCommandException("Couldn't execute signin action!");
   	} else if(!is_object($response) || !property_exists($response, "success")) {
   		throw new sfCommandException("Login mechanism doesn't seem to be afGuard, opreation failed!");
@@ -453,25 +517,6 @@ EOF;
   	
   	return microtime(true);
   
-  }
-  	
-  
-  private function getTotalTime() {
-  	
-  	
-  	$res = $this->time() - $this->stamp;
-  	
-  	switch($this->config->time_unit) {
-  		case "s":
-  			$res = sprintf("%1.2f",$res);
-  			break;
-  		case "ms":
-  			$res = round($res*1000);
-  			break;
-  	}
-  	
-  	return $res.$this->config->time_unit;
-  	
   }
      
 

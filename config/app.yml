@@ -9,6 +9,7 @@ all:
     application: frontend
     env: prod
     csrf: true
-    layouts: false
+    layouts: true
     profiling: true
+    params:
   

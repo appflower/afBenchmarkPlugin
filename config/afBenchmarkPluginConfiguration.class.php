@@ -17,12 +17,6 @@ class afBenchmarkPluginConfiguration extends sfPluginConfiguration
    */
   public function initialize()
   {
- 
-  	// Suppress error reporting..
-  	
-  	ini_set("display_errors", "off");
-  	error_reporting(0);
-  	
   }
   
   
