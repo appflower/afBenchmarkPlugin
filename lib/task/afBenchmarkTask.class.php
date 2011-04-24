@@ -185,8 +185,7 @@ EOF;
   	$rootdir = $config->getRootDir();
   	$this->moduledir = $rootdir."/apps/".$this->config->application."/modules";
   	$this->layoutdir = $rootdir."/apps/".$this->config->application."/config/pages";
-  	$this->context = sfContext::createInstance($config);
-  	
+
   	unset($config);
   	
   	// Collect widgets and layouts to execute
