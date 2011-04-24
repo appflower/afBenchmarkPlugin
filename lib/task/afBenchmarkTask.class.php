@@ -320,8 +320,12 @@ EOF;
   private function printHeader() {
   	
   	$max = $this->maxwidth-22;
-  	
-  	$text = "Widget".str_repeat(" ", $max)."Status    Valid    Time    actionTime    renderTime    Data";
+
+    if ($this->config->profiling) {
+        $text = "Widget".str_repeat(" ", $max)."Status    Valid    Time    actionTime    renderTime    queriesCount        Data";
+    } else {
+        $text = "Widget".str_repeat(" ", $max)."Status    Valid    Time        Data";
+    }
   	$this->logBlock(" ",null);	
   	$this->logBlock($text,null);	
   	$this->logBlock(str_repeat("-", strlen($text)),null);
@@ -413,20 +417,43 @@ EOF;
 
 	  		++$this->totals[$valid];
 
-            $token = $this->browser->getXDebugTokenHeaderValue();
-            $requestProfiler = $this->profiler->loadFromToken($token);
-            $widgetDataCollector = $requestProfiler->get('widget');
+            if ($this->config->profiling) {
+                $token = $this->browser->getXDebugTokenHeaderValue();
+                $requestProfiler = $this->profiler->loadFromToken($token);
+                $widgetDataCollector = $requestProfiler->get('widget');
+                $propelDataCollector = $requestProfiler->get('propel');
 
-	  		$this->logBlock(
-                $entry.str_repeat(" ",$max - (strlen($module."/".$widget)-6)).
-                    $this->browser->getStatusCode().
-                    str_repeat(" ",7).$valid.
-                    str_repeat(" ",9-strlen($valid)).$execTime.
-                    str_repeat(" ",7).$widgetDataCollector->getActionTime().$this->config->time_unit.
-                    str_repeat(" ",7).$widgetDataCollector->getRenderTime().$this->config->time_unit.
-                    str_repeat(" ",8-strlen($execTime)).$this->browser->getResponseSize(),
-                null
-            );
+                $this->logBlock(
+                    $entry.str_repeat(" ",$max - (strlen($module."/".$widget)-6)).
+                        str_pad($this->browser->getStatusCode(), 6, ' ', STR_PAD_LEFT).
+                        '  '.
+                        str_pad($valid, 7, ' ', STR_PAD_LEFT).
+                        '  '.
+                        str_pad($execTime, 6, ' ', STR_PAD_LEFT).
+                        '  '.
+                        str_pad($widgetDataCollector->getActionTime().$this->config->time_unit, 12, ' ', STR_PAD_LEFT).
+                        '  '.
+                        str_pad($widgetDataCollector->getRenderTime().$this->config->time_unit, 12, ' ', STR_PAD_LEFT).
+                        '  '.
+                        str_pad($propelDataCollector->getQueriesCount(), 14, ' ', STR_PAD_LEFT).
+                        '    '.
+                        str_pad($this->browser->getResponseSize(), 10, ' ', STR_PAD_LEFT),
+                    null
+                );
+            } else {
+                $this->logBlock(
+                    $entry.str_repeat(" ",$max - (strlen($module."/".$widget)-6)).
+                        str_pad($this->browser->getStatusCode(), 6, ' ', STR_PAD_LEFT).
+                        '  '.
+                        str_pad($valid, 7, ' ', STR_PAD_LEFT).
+                        '  '.
+                        str_pad($execTime, 6, ' ', STR_PAD_LEFT).
+                        '    '.
+                        str_pad($this->browser->getResponseSize(), 10, ' ', STR_PAD_LEFT),
+                    null
+                );
+
+            }
 	  		
 	  		if($ajax && $header && $k == count($entries)-1) {
 	  			$this->logBlock(" ",null);
