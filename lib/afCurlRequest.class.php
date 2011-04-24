@@ -92,7 +92,7 @@ class afCurlRequest {
   		}
   		
   		if(trim($header)) {
-  			$this->headers[$k] = $v;	
+  			$this->headers[$k] = trim($v);
   		}
   		
   		return strlen($header);
@@ -123,6 +123,11 @@ class afCurlRequest {
 		return $this->headers;
 		
 	}
+
+    public function getXDebugTokenHeaderValue()
+    {
+        return $this->headers['X-Debug-Token'];
+    }
 	
 	/**
 	 * 

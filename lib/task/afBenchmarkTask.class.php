@@ -23,13 +23,16 @@ class afBenchmarkTask extends sfBaseTask
   private 
   	$widgets = array(),
   	$context,
-	$profiledata,
-	$browser,
 	$totals = array("widgettotaltime" => 0, "layouttotaltime" => 0, "widgets" => 0, "layouts" => 0, "true" => 0, "false" => 0),
   	$stamp,
   	$processed = array(),
   	$config,
   	$maxwidth = 60;
+
+  /**
+   * @var afCurlRequest
+   */
+  private $browser;
 	
   /**
    * Configures task.
@@ -319,7 +322,7 @@ EOF;
   	
   	$max = $this->maxwidth-22;
   	
-  	$text = "Widget".str_repeat(" ", $max)."Status    Valid    Time    Data";
+  	$text = "Widget".str_repeat(" ", $max)."Status    Valid    Time    actionTime    renderTime    Data";
   	$this->logBlock(" ",null);	
   	$this->logBlock($text,null);	
   	$this->logBlock(str_repeat("-", strlen($text)),null);
@@ -410,8 +413,21 @@ EOF;
 	  		}	  	
 
 	  		++$this->totals[$valid];
-	  		
-	  		$this->logBlock($entry.str_repeat(" ",$max - (strlen($module."/".$widget)-6)).$this->browser->getStatusCode().str_repeat(" ",7).$valid.str_repeat(" ",9-strlen($valid)).$execTime.str_repeat(" ",8-strlen($execTime)).$this->browser->getResponseSize(),null);
+
+            $token = $this->browser->getXDebugTokenHeaderValue();
+            $requestProfiler = $this->profiler->loadFromToken($token);
+            $widgetDataCollector = $requestProfiler->get('widget');
+
+	  		$this->logBlock(
+                $entry.str_repeat(" ",$max - (strlen($module."/".$widget)-6)).
+                    $this->browser->getStatusCode().
+                    str_repeat(" ",7).$valid.
+                    str_repeat(" ",9-strlen($valid)).$execTime.
+                    str_repeat(" ",7).$widgetDataCollector->getActionTime().$this->config->time_unit.
+                    str_repeat(" ",7).$widgetDataCollector->getRenderTime().$this->config->time_unit.
+                    str_repeat(" ",8-strlen($execTime)).$this->browser->getResponseSize(),
+                null
+            );
 	  		
 	  		if($ajax && $header && $k == count($entries)-1) {
 	  			$this->logBlock(" ",null);
