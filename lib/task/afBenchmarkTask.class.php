@@ -23,7 +23,7 @@ class afBenchmarkTask extends sfBaseTask
   private 
   	$widgets = array(),
   	$context,
-	$totals = array("widgettotaltime" => 0, "layouttotaltime" => 0, "widgets" => 0, "layouts" => 0, "true" => 0, "false" => 0),
+	$totals = array("widgettotaltime" => 0, "layouttotaltime" => 0, "widgets" => 0, "layouts" => 0, "true" => 0, "false" => 0, "noprofile" => 0),
   	$stamp,
   	$processed = array(),
   	$config,
@@ -45,18 +45,18 @@ class afBenchmarkTask extends sfBaseTask
   	));
     
   	$this->addOptions(array(
-  	  new sfCommandOption('params', null, sfCommandOption::PARAMETER_OPTIONAL, 'Optional request parameters', ''),
-  	  new sfCommandOption('profiling', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether to collect profiling data', ''),
-  	  new sfCommandOption('username', null, sfCommandOption::PARAMETER_OPTIONAL, 'User login for secured apps', ''),
-  	  new sfCommandOption('password', null, sfCommandOption::PARAMETER_OPTIONAL, 'User password for secured apps', ''),
-      new sfCommandOption('url', null, sfCommandOption::PARAMETER_OPTIONAL, 'The URL of the AF appliance you wanna benchmark', ''),
-      new sfCommandOption('time_unit', null, sfCommandOption::PARAMETER_OPTIONAL, 'Show execution times as..', ''),
-      new sfCommandOption('size_unit', null, sfCommandOption::PARAMETER_OPTIONAL, 'Show response sizes as..', ''),
-      new sfCommandOption('use_cache', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether to use SF cache', ''),
+  	  new sfCommandOption('params', null, sfCommandOption::PARAMETER_OPTIONAL, 'Optional request parameters', null),
+  	  new sfCommandOption('profiling', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether to collect profiling data', null),
+  	  new sfCommandOption('username', null, sfCommandOption::PARAMETER_OPTIONAL, 'User login for secured apps', null),
+  	  new sfCommandOption('password', null, sfCommandOption::PARAMETER_OPTIONAL, 'User password for secured apps', null),
+      new sfCommandOption('url', null, sfCommandOption::PARAMETER_OPTIONAL, 'The URL of the AF appliance you wanna benchmark', null),
+      new sfCommandOption('time_unit', null, sfCommandOption::PARAMETER_OPTIONAL, 'Show execution times as..', null),
+      new sfCommandOption('size_unit', null, sfCommandOption::PARAMETER_OPTIONAL, 'Show response sizes as..', null),
+      new sfCommandOption('use_cache', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether to use SF cache', null),
       new sfCommandOption('application', null, sfCommandOption::PARAMETER_OPTIONAL, 'The SF application', 'frontend'),
       new sfCommandOption('env', null, sfCommandOption::PARAMETER_OPTIONAL, 'The SF environment', 'prod'),
-      new sfCommandOption('csrf', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether there is a CSRF filter to bypass', ''),
-      new sfCommandOption('layouts', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether to process layouts when benchmarking the entire app', ''),
+      new sfCommandOption('csrf', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether there is a CSRF filter to bypass', null),
+      new sfCommandOption('layouts', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether to process layouts when benchmarking the entire app', null),
     ));
     
     $this->namespace = 'appflower';
@@ -74,7 +74,7 @@ on the command-line.
 
 About the arguments:
 
-* The "widget" argument should be a valid SF internal URI. If the URI points to a layout view, all associated widgets will be benchmarked.
+* The "[widget|COMMENT]" argument should be a valid SF internal URI. If the URI points to a layout view, all associated widgets will be benchmarked.
 The URI may also contain the '*' wildcard as widget name (i.e.: foo/*). In such a case all widgets in the given module will be processed.
 If you omit the "widget" argument or use the '*' value, the whole application (all widgets and layouts) will be processed.
 
@@ -82,45 +82,45 @@ About the options:
 
 All these options are available in the plugin's app.yml. You should use the command-line versions for overriding the config values only!
 
-* The "params" option allows you to supply one or more parameters to be passed with the request.
+* The "[params|COMMENT]" option allows you to supply one or more parameters to be passed with the request.
   The expected value is a query string and this option should be used only when you're benchmarking a single widget.
   
-* The "profiling" option should be set to true or false. When its value is true, a more detailed result will be displayed, since profiling data will be
+* The "[profiling|COMMENT]" option should be set to true or false. When its value is true, a more detailed result will be displayed, since profiling data will be
 also included. Please note that this requires the afProfilerPlugin to be installed.
 
-* The "username" and "password" options should be used if the AF application is secured. If you don't need this, simply
+* The "[username|COMMENT]" and "[password|COMMENT]" options should be used if the AF application is secured. If you don't need this, simply
 empty their values in app.yml. Please note that this works only if authentication was implemented using afGuardPlugin. 
 
-* The "url" parameter should point to the AF application you want to work with. If you're benchmarking the current application, you may
+* The "[url|COMMENT]" parameter should point to the AF application you want to work with. If you're benchmarking the current application, you may
 use the value "local". Otherwise a HTTP / HTTPS URL is expected, with port number (if needed).
 
-* The "time_unit" option determines how execution times are measured. Valid values are "s" (seconds) or "ms" (microseconds).
+* The "[time_unit|COMMENT]" option determines how execution times are measured. Valid values are "s" (seconds) or "ms" (microseconds).
 
-* The "size_unit" option controls how the response sizes are calculated. Valid values are "B" (bytes") or "KB" (kilobytes).
+* The "[size_unit|COMMENT]" option controls how the response sizes are calculated. Valid values are "B" (bytes") or "KB" (kilobytes).
 
-* The "use_cache" option should be set to false if you want SF cache to be cleared before benchmarking.
+* The "[use_cache|COMMENT]" option should be set to false if you want SF cache to be cleared before benchmarking.
 
-* The "application" and "env" options are names of the SF application and environment, respectively. If you are benchmarking a 
+* The "[application|COMMENT]" and "[env|COMMENT]" options are names of the SF application and environment, respectively. If you are benchmarking a 
 remote application, leave the default values intact.
 
-* The "csrf" option's value should be set to true if your application uses CSRF protection. 
+* The "[csrf|COMMENT]" option's value should be set to true if your application uses CSRF protection. 
 
-* The "layouts" option should be enabled, if you want layouts to be processed as well as widgets when doing full benchmarking (app).
+* The "[layouts|COMMENT]" option should be enabled, if you want layouts to be processed as well as widgets when doing full benchmarking (app).
 
 
 Examples:
 
 To benchmark a single widget (and override some config options):
 
-[symfony appflower:benchmark users/edit]
+[symfony appflower:benchmark users/edit|INFO]
 
 To benchmark all widgets in a module:
 
-[symfony appflower:benchmark users/*]
+[symfony appflower:benchmark users/*|INFO]
 
 To benchmark the entire app:
 
-[symfony appflower:benchmark]
+[symfony appflower:benchmark|INFO]
    
 EOF;
   	
@@ -149,7 +149,7 @@ EOF;
   	foreach(sfConfig::getAll() as $prop => $value) {
   		if(strstr($prop,"app_afBenchmarkPlugin")) {
 	  		$prop = str_replace("app_afBenchmarkPlugin_", "", $prop);
-	  		$value = ($options[$prop]) ? $options[$prop] : $value;
+	  		$value = (!is_null($options[$prop])) ? $options[$prop] : $value;
 	  		$this->config->$prop = $value;
   		}
   	}
@@ -157,6 +157,8 @@ EOF;
   	if(!$this->config->url) {
   		$this->config->url = "http://localhost/";
   	}
+  	
+  	$this->config->mode = $arguments["widget"];
   	
   	preg_match("/\/([^\/:]+)/", $this->config->url,$m);
   	
@@ -177,7 +179,7 @@ EOF;
   		throw new sfCommandException("The URL parameter is not defined!");
   	} 
   	
-  	error_reporting(0);
+  	//error_reporting(0);
   	
   	// Init context..
   	
@@ -294,14 +296,18 @@ EOF;
   	$this->logBlock(" ",null);
   	$overtime = isset($this->totals["overtime"]) ? count($this->totals["overtime"]) : 0;
   	
-  	$this->logSection(sprintf("Executed %d items in %s%s",$this->totals["widgets"]+$this->totals["layouts"],$this->totals["widgettotaltime"]+$this->totals["layouttotaltime"],$this->config->time_unit),null,null,"INFO");
+  	$this->logSection(sprintf("Executed %d item(s) in %s%s",$this->totals["widgets"]+$this->totals["layouts"],$this->totals["widgettotaltime"]+$this->totals["layouttotaltime"],$this->config->time_unit),null,null,"INFO");
   		
   	if($this->totals["false"]) {
-  		$this->logSection(sprintf("%d requests were unsuccessful!",$this->totals["false"]),null,null,"ERROR");
+  		$this->logSection(sprintf("%d request(s) were unsuccessful!",$this->totals["false"]),null,null,"ERROR");
+  	}
+  	
+  	if($this->totals["noprofile"]) {
+  		$this->logSection(sprintf("%d request(s) did not return profiling data!",$this->totals["noprofile"]),null,null,"ERROR");
   	}
   	
     if($overtime) {
-  		$this->logSection(sprintf("%d widgets took more than ".$this->config->limit.$this->config->time_unit." to run.",$overtime),null,null,"INFO");
+  		$this->logSection(sprintf("%d widget(s) took more than ".$this->config->limit.$this->config->time_unit." to run.",$overtime),null,null,"INFO");
   	}
   	
   	$this->logSection(sprintf("Average widget execution time was: %1.2f%s",($this->totals["widgettotaltime"] / $this->totals["widgets"]),$this->config->time_unit),null,null,"INFO");
@@ -346,6 +352,18 @@ EOF;
   }
   
   
+  private function allProcessed(Array $items,$module) {
+  	
+  	 foreach($items as $widget) {
+	   	if(!in_array($module."/".$widget, $this->processed)) {
+	   		return false;
+	   	}	
+  	 }
+  	 
+  	 return true;
+  }
+  
+  
   /**
    * 
    * Executes the selected widgets and layouts and prints benchmarking results.
@@ -372,22 +390,24 @@ EOF;
 	$this->printHeader();	
   	
 	foreach($widgets as $module => $entries) {
-		if(!empty($entries)) {
-			$this->printSubHeader($module);
+		$this->printSubHeader($module);
+		if($this->allProcessed($entries,$module)) {
+			$this->logBlock("Contains only already processed widgets or is empty, skipping..","COMMENT");
+			continue;
 		}
 		foreach($entries as $k => $widget) {
 			
 			$ajax = ($module != "pages");
 			$entry = $module."/".$widget;
-	  		
-			if(!$ajax && $k) {
-				$this->printHeader();
-				$this->printSubHeader($module);	
-			} 
 			
 			if(in_array($entry,$this->processed)) {
 				continue;
 			}
+			
+			if(!$ajax && $k) {
+				$this->printHeader();
+				$this->printSubHeader($module);	
+			} 
 			
 			$uri = "/".$entry.(($this->config->params) ? ("?".urlencode($this->config->params)) : "?");
 	  		
@@ -420,8 +440,22 @@ EOF;
             if ($this->config->profiling) {
                 $token = $this->browser->getXDebugTokenHeaderValue();
                 $requestProfiler = $this->profiler->loadFromToken($token);
-                $widgetDataCollector = $requestProfiler->get('widget');
-                $propelDataCollector = $requestProfiler->get('propel');
+                if(!$requestProfiler->isEmpty()) {
+                	$widgetDataCollector = $requestProfiler->get('widget');
+                	$actionTime = $widgetDataCollector->getActionTime().$this->config->time_unit;
+                	$propelDataCollector = $requestProfiler->get('propel');
+                	$renderTime = $widgetDataCollector->getRenderTime().$this->config->time_unit;
+                	$dbCount = $propelDataCollector->getQueriesCount();
+                
+                } else {
+                	$actionTime = $renderTime = $dbCount = "-";
+                	if($valid == "true") {
+                		--$this->totals[$valid];
+                		++$this->totals["false"];
+                		++$this->totals["noprofile"];
+                		$valid = "false";
+                	}
+                }
 
                 $this->logBlock(
                     $entry.str_repeat(" ",$max - (strlen($module."/".$widget)-6)).
@@ -431,11 +465,11 @@ EOF;
                         '  '.
                         str_pad($execTime, 6, ' ', STR_PAD_LEFT).
                         '  '.
-                        str_pad($widgetDataCollector->getActionTime().$this->config->time_unit, 12, ' ', STR_PAD_LEFT).
+                        str_pad($actionTime, 12, ' ', STR_PAD_LEFT).
                         '  '.
-                        str_pad($widgetDataCollector->getRenderTime().$this->config->time_unit, 12, ' ', STR_PAD_LEFT).
+                        str_pad($renderTime, 12, ' ', STR_PAD_LEFT).
                         '  '.
-                        str_pad($propelDataCollector->getQueriesCount(), 14, ' ', STR_PAD_LEFT).
+                        str_pad($dbCount, 14, ' ', STR_PAD_LEFT).
                         '    '.
                         str_pad($this->browser->getResponseSize(), 10, ' ', STR_PAD_LEFT),
                     null
@@ -455,7 +489,7 @@ EOF;
 
             }
 	  		
-	  		if($ajax && $header && $k == count($entries)-1) {
+	  		if($this->config->mode == "*" && $ajax && $header && $k == count($entries)-1) {
 	  			$this->logBlock(" ",null);
 	  			$this->printHeader();
 	  		}
