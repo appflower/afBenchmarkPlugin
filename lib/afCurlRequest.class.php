@@ -345,6 +345,17 @@ class afCurlRequest {
 	public function getResponseBody() {
 		return $this->response;
 	}
-	
-	
+    
+	/**
+	 * Checkes if there was AF redirection to login page
+	 */
+	public function checkForAuthenticationError() {
+		$responseData = json_decode($this->getResponseBody(), true);
+        
+        if ($responseData) {
+            if (@$responseData['redirect'] == '/login') {
+                throw new Exception("You we're redirected to login page - check your credentials settings");
+            }
+        }
+	}
 }

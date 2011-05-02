@@ -416,6 +416,7 @@ EOF;
 	  		}
 	  		
 	  		$this->browser->get($this->config->url.$uri);
+	  		$this->browser->checkForAuthenticationError();
 //			file_put_contents("./foo/".$widget, $this->browser->getResponseBody());
 	  		$this->totals[$this->browser->getStatusCode()][] = $this->browser->getStatusMessage();
 	  		$execTimeNumber = $this->browser->getResponseTime(true);
@@ -446,6 +447,10 @@ EOF;
                 	$propelDataCollector = $requestProfiler->get('propel');
                 	$renderTime = $widgetDataCollector->getRenderTime().$this->config->time_unit;
                 	$dbCount = $propelDataCollector->getQueriesCount();
+                    $dbTime = $propelDataCollector->getTotalQueriesTime();
+                    if ($dbTime != '') {
+                        $dbCount .= " ({$dbTime}ms)";
+                    }
                 
                 } else {
                 	$actionTime = $renderTime = $dbCount = "-";
