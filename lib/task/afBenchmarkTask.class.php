@@ -46,7 +46,6 @@ class afBenchmarkTask extends sfBaseTask
     
   	$this->addOptions(array(
   	  new sfCommandOption('params', null, sfCommandOption::PARAMETER_OPTIONAL, 'Optional request parameters', null),
-  	  new sfCommandOption('profiling', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether to collect profiling data', null),
   	  new sfCommandOption('username', null, sfCommandOption::PARAMETER_OPTIONAL, 'User login for secured apps', null),
   	  new sfCommandOption('password', null, sfCommandOption::PARAMETER_OPTIONAL, 'User password for secured apps', null),
       new sfCommandOption('url', null, sfCommandOption::PARAMETER_OPTIONAL, 'The URL of the AF appliance you wanna benchmark', null),
@@ -67,7 +66,7 @@ class afBenchmarkTask extends sfBaseTask
 This task executes one or more AF widgets or layouts and provides benchmarking information. It can be used to benchmark one widget, an 
 entire module or the whole AF application.
 
-If afProfilerPlugin is installed, it can display profiling results as well. See the "profiling" option.
+If afProfilerPlugin is installed and enabled, it will display profiling results as well.
 
 Before using the plugin, make sure the "url", "username", "password" and "csrf" values are correctly set in app.yml or supply these
 on the command-line.
@@ -85,9 +84,6 @@ All these options are available in the plugin's app.yml. You should use the comm
 * The "[params|COMMENT]" option allows you to supply one or more parameters to be passed with the request.
   The expected value is a query string and this option should be used only when you're benchmarking a single widget.
   
-* The "[profiling|COMMENT]" option should be set to true or false. When its value is true, a more detailed result will be displayed, since profiling data will be
-also included. Please note that this requires the afProfilerPlugin to be installed.
-
 * The "[username|COMMENT]" and "[password|COMMENT]" options should be used if the AF application is secured. If you don't need this, simply
 empty their values in app.yml. Please note that this works only if authentication was implemented using afGuardPlugin. 
 
@@ -243,15 +239,14 @@ EOF;
   	$this->browser->get($this->config->url);
   	
   	$headers = $this->browser->getHeaders();
-  	
-  	if($this->config->profiling) {
-  		if(!isset($headers["X-Debug-Token"])) {
-  			throw new sfCommandException("Profiler is not running, please turn off this option!");	
-  		} else {
-            require_once dirname(dirname(dirname(__DIR__))).'/afProfilerPlugin/lib/afProfiler.class.php';
-  		    $this->profiler = afProfiler::create();
-  		}
-  	} 
+
+    if(!isset($headers["X-Debug-Token"])) {
+        $this->config->profiling = false;
+    } else {
+        require_once dirname(dirname(dirname(__DIR__))).'/afProfilerPlugin/lib/afProfiler.class.php';
+        $this->profiler = afProfiler::create();
+        $this->config->profiling = true;
+    }
   	
   	// Bypass CSRF filter if necessary
   	
