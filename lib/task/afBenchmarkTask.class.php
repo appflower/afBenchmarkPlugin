@@ -407,7 +407,7 @@ EOF;
 			$uri = "/".$entry.(($this->config->params) ? ("?".urlencode($this->config->params)) : "?");
 	  		
 	  		if($ajax) {
-	  			$uri .= "&widget_load=true";
+	  			$uri .= "&af_format=json";
 	  		}
 	  		
 	  		$this->browser->get($this->config->url.$uri);
