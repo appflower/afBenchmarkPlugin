@@ -22,9 +22,43 @@ class afBenchmarkTask extends sfBaseTask
 	
   private 
   	$widgets = array(),
-  	$context,
-	$totals = array("widgettotaltime" => 0, "layouttotaltime" => 0, "widgets" => 0, "layouts" => 0, "true" => 0, "false" => 0, "noprofile" => 0),
-  	$stamp,
+  	$linewidth = 0,
+  	$layouts = false,
+	$totals = array(
+		"connecttime" => 0, 
+		"widgetactiontime" => 0, 
+		"widgetrendertime" => 0,
+		"widgetservertime" => 0,  
+		"widgettransfertime" => 0,
+		"widgettotaltime" => 0,
+		"layoutactiontime" => 0, 
+		"layoutrendertime" => 0,
+		"layoutservertime" => 0,  
+		"layouttransfertime" => 0,
+		"layouttotaltime" => 0, 
+		"widgets" => 0, 
+		"layouts" => 0, 
+		"true" => 0, 
+		"false" => 0, 
+		"noprofile" => 0
+	),
+	$itemtotals = array(
+		"connectTime" => 0, 
+		"actionTime" => 0, 
+		"renderTime" => 0,
+		"serverTime" => 0,  
+		"transferTime" => 0,
+		"execTime" => 0,
+		"size" => 0,
+		"dbCount" => 0,
+		"dbTime" => 0,
+	    "speed" => 0,
+		"entry" => 0,
+		"status" => 0,
+		"valid" => 0,
+		"itemcount" => 0,
+	),
+	$widgetprocessing = null,
   	$processed = array(),
   	$config,
   	$maxwidth = 60;
@@ -56,6 +90,7 @@ class afBenchmarkTask extends sfBaseTask
       new sfCommandOption('env', null, sfCommandOption::PARAMETER_OPTIONAL, 'The SF environment', 'prod'),
       new sfCommandOption('csrf', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether there is a CSRF filter to bypass', null),
       new sfCommandOption('layouts', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether to process layouts when benchmarking the entire app', null),
+      new sfCommandOption('profiling', null, sfCommandOption::PARAMETER_OPTIONAL, 'Whether to use the profiler', null),
     ));
     
     $this->namespace = 'appflower';
@@ -134,7 +169,7 @@ EOF;
   	
   	// Init timer..
   	
-  	$this->stamp = $this->time();
+  	$stamp = $this->time();
   	
   	$time_units = array("s","ms");
   	$size_units = array("B","KB");
@@ -220,6 +255,9 @@ EOF;
   		
   	}
   	
+  	
+  	$this->layouts = ($arguments["widget"] == "*" || strstr($arguments["widget"],"pages/"));
+  	
   	// Clear SF cache is needed..
   	
   	if(!$this->config->use_cache) {
@@ -233,7 +271,7 @@ EOF;
   	
   	$this->browser = new afCurlRequest($this->config);
   	
-  	$this->logSection("Started at: ".date("Y-m-d H:i:s",$this->stamp),null,null,"INFO");
+  	$this->logSection("Started at: ".date("Y-m-d H:i:s",$stamp),null,null,"INFO");
   	$this->logSection("Connecting to ".$this->config->url." (".gethostbyname($this->config->ip).")",null,null,"INFO");
   	
   	$this->browser->get($this->config->url);
@@ -243,9 +281,13 @@ EOF;
     if(!isset($headers["X-Debug-Token"])) {
         $this->config->profiling = false;
     } else {
-        require_once dirname(dirname(dirname(__DIR__))).'/afProfilerPlugin/lib/afProfiler.class.php';
-        $this->profiler = afProfiler::create();
-        $this->config->profiling = true;
+        if($options["profiling"] !== "0") {
+        	require_once dirname(dirname(dirname(__DIR__))).'/afProfilerPlugin/lib/afProfiler.class.php';
+	        $this->profiler = afProfiler::create();
+	        $this->config->profiling = true;	
+        } else {
+        	$this->config->profiling = false;
+        }
     }
   	
   	// Bypass CSRF filter if necessary
@@ -269,14 +311,13 @@ EOF;
     
     sfConfig::add(array("benchmark" => true));
   	
-  	$this->executeWidgets(null,$options);
+    $this->printHeader();
+    
+  	$this->executeWidgets(null);
   	
   	$this->browser->shutdown();
-  
-  	$this->logBlock(" ",null);
-  	$this->logBlock("All Done!","QUESTION");
-  	$this->logSection(sprintf("Finished at: %s",date("Y-m-d H:i:s")),null,null,"INFO");
-  	$this->logSection("Result details:",null,null,"INFO");
+  	
+  	$this->logBlock("\nHTTP Response stats:\n","QUESTION");
   	
   	$w = 0;
   	foreach($this->totals as $code => $totals) {
@@ -284,17 +325,50 @@ EOF;
   			continue;
   		}
   		$str = $code." - ".$totals[0];
-  		$this->logBlock(sprintf("%s%s%d",$str,str_repeat(" ", $this->maxwidth-strlen($str)+6),count($totals)),"INFO");
+  		$this->logBlock(sprintf("%s%s%d",$str,str_repeat(" ", $this->linewidth-strlen($str)),count($totals)),"INFO");
   		$w += count($totals);
   	}
   	
-  	$this->logBlock(" ",null);
-  	$overtime = isset($this->totals["overtime"]) ? count($this->totals["overtime"]) : 0;
+  	$items =  ($this->layouts) ? array("widget","layout") : array("widget");
   	
-  	$this->logSection(sprintf("Executed %d item(s) in %s%s",$this->totals["widgets"]+$this->totals["layouts"],$this->totals["widgettotaltime"]+$this->totals["layouttotaltime"],$this->config->time_unit),null,null,"INFO");
+  	$labels = array
+  	(
+  	"connecttime" => "Connecting host",
+  	"actiontime" => "Performing SF action",
+  	"rendertime" => "Generation of content",
+  	"servertime" => "Server processing total",
+  	"transfertime" => "Transfer time",
+  	"totaltime" => "Total execution time",
+  	);
+  	
+  	if($this->config->profiling) {
+  		$this->logBlock("\nExecution times (averages):","QUESTION");
+	  	foreach($items as $item) {
+	  		$sk = $item."s";
+	  		$this->logBlock(sprintf("\n%ss\n",ucfirst($item)),"QUESTION");
+	  		foreach($labels as $key => $label) {
+	  			$tk = $item.$key;
+	  			if($key == "connecttime") {
+	  				$value = $this->totals[$key] / ($this->totals["widgets"]+$this->totals["layouts"]);
+	  			} else {
+	  				$value = $this->totals[$tk] / $this->totals[$sk];
+	  			}
+	  			
+	  			$this->logBlock(sprintf("%s: %1.2f%s",$label,$value,$this->config->time_unit),"INFO");	
+	  		}
+	  	}	
+  	}
+  	
+  	$this->logBlock(" ",null);
+  	$this->logBlock("All Done!","QUESTION");
+  	$this->logBlock(" ",null);
+  	
+  	$this->logSection(sprintf("Finished at: %s",date("Y-m-d H:i:s")),null,null,"INFO");
+  	$this->logSection(sprintf("Executed %d item(s) in %s%s",$this->totals["widgets"]+$this->totals["layouts"],number_format($this->totals["widgettotaltime"]+$this->totals["layouttotaltime"],2),$this->config->time_unit),null,null,"INFO");
+  	$overtime = isset($this->totals["overtime"]) ? count($this->totals["overtime"]) : 0;
   		
   	if($this->totals["false"]) {
-  		$this->logSection(sprintf("%d request(s) were unsuccessful!",$this->totals["false"]),null,null,"ERROR");
+  		$this->logSection(sprintf("Loading %d items(s) failed due to errors!",$this->totals["false"]),null,null,"ERROR");
   	}
   	
   	if($this->totals["noprofile"]) {
@@ -305,12 +379,7 @@ EOF;
   		$this->logSection(sprintf("%d widget(s) took more than ".$this->config->limit.$this->config->time_unit." to run.",$overtime),null,null,"INFO");
   	}
   	
-  	$this->logSection(sprintf("Average widget execution time was: %1.2f%s",($this->totals["widgettotaltime"] / $this->totals["widgets"]),$this->config->time_unit),null,null,"INFO");
-  	
-  	if($this->totals["layouts"]) {
-  		$this->logSection(sprintf("Average layout execution time was: %1.2f%s",($this->totals["layouttotaltime"] / $this->totals["layouts"]),$this->config->time_unit),null,null,"INFO");	
-  	}
-  	
+
   }
   
   /**
@@ -321,16 +390,34 @@ EOF;
   private function printHeader() {
   	
   	$max = $this->maxwidth-22;
-
+  	
     if ($this->config->profiling) {
-        $text = "Widget".str_repeat(" ", $max)."Status    Valid    Time    actionTime    renderTime    queriesCount        Data";
+        $text = "Widget".str_repeat(" ", $max)."Status    Valid    connectTime    actionTime    renderTime    serverTime    transferTime    totalTime    queriesCount    averageSpeed        Data";
     } else {
-        $text = "Widget".str_repeat(" ", $max)."Status    Valid    Time        Data";
+        $text = "Widget".str_repeat(" ", $max)."Status    Valid    totalTime        Data";
     }
+    
+    if(!$this->linewidth) {
+   		$this->linewidth = strlen($text); 	
+    }
+  
   	$this->logBlock(" ",null);	
   	$this->logBlock($text,null);	
-  	$this->logBlock(str_repeat("-", strlen($text)),null);
+  	$this->logBlock(str_repeat("-", $this->linewidth),null);
   	
+  }
+  
+  
+  /**
+   * Resets the array used for subtotal counts.
+   * 
+   */
+  private function resetItemTotals() {
+  		
+  	foreach($this->itemtotals as $k => &$v) {
+  		$v = 0;
+  	} 
+  
   }
   
   /**
@@ -338,25 +425,63 @@ EOF;
    * Prints section subtitle.
    * @param string $module - The name of the currently processed module
    */
-  private function printSubHeader($module) {
+  private function printSubHeader($layouts = false) {
   		
   	$this->logBlock(" ",null);
-	$this->logBlock($module == "pages" ? "Processing layout.." : "Processing widgets in '".$module."'","INFO");	
+	$this->logBlock(($layouts) ? "Processing layouts.." : "Processing widgets..","INFO");	
 	$this->logBlock(" ",null);
 	
   }
   
-  
-  private function allProcessed(Array $items,$module) {
+  /*
+   * Reads the first module that should be processed when layouts are done
+   * 
+   * @return string
+   */
+  private function getFirstModule() {
   	
-  	 foreach($items as $widget) {
-	   	if(!in_array($module."/".$widget, $this->processed)) {
-	   		return false;
-	   	}	
-  	 }
-  	 
-  	 return true;
+ 	foreach($this->widgets as $module => $entries) {
+ 		if($module != "pages") {
+ 			return $module;
+ 		}
+ 		
+ 	}
+ 	
+ 	return "";	
+  
   }
+  
+  /**
+   * Reads the name of the last widget referenced in layouts
+   * 
+   * @param Array $widgets
+   * @return boolean
+   */
+   private function getLastWidget($widgets) {
+   	
+	 	return array_pop(array_pop($widgets));
+ 	  
+  }
+  
+  
+  /**
+   * Adds various execution times of currently procssed item
+   * 
+   */
+  private function addItemTotal() {
+   	
+   		$params = func_get_args();
+   		$keys = array_keys($this->itemtotals);
+   		
+   		foreach($params as $k => $param) {
+   			if(!is_null($param)) {
+   				$this->itemtotals[$keys[$k]] += $param;	
+   			}
+   		}
+   		
+   		++$this->itemtotals["itemcount"];
+   		
+   } 
   
   
   /**
@@ -370,7 +495,7 @@ EOF;
    * @return int The number of processed items.
    * 
    */
-  private function executeWidgets(Array $widgets = null,$layout = false,$header = false) {
+  private function executeWidgets(Array $widgets = null,$layout = null) {
   	
   	if(is_null($widgets)) {
   		$widgets = $this->widgets;
@@ -378,125 +503,221 @@ EOF;
   	
 	$max = $this->maxwidth-22;
 	
-	if(!$layout) {
-		$this->logBlock("Processing..",null);	
-	}
-	
-	$this->printHeader();	
-  	
 	foreach($widgets as $module => $entries) {
-		$this->printSubHeader($module);
-		if($this->allProcessed($entries,$module)) {
-			$this->logBlock("Contains only already processed widgets or is empty, skipping..","COMMENT");
-			continue;
+		
+		$ajax = ($module != "pages");
+		$widgetprocessing = ($ajax && $this->getFirstModule() == $module);
+		
+		if(!$ajax) {
+			$this->printSubHeader(true);	
+		} else if($widgetprocessing === true) {
+			$this->printSubHeader();
+			$this->widgetprocessing = true;
 		}
+		
 		foreach($entries as $k => $widget) {
 			
-			$ajax = ($module != "pages");
+			$print = false;
 			$entry = $module."/".$widget;
-			
-			if(in_array($entry,$this->processed)) {
-				continue;
-			}
-			
-			if(!$ajax && $k) {
-				$this->printHeader();
-				$this->printSubHeader($module);	
-			} 
 			
 			$uri = "/".$entry.(($this->config->params) ? ("?".urlencode($this->config->params)) : "?");
 	  		
 	  		if($ajax) {
+	  			$orig_uri = $uri;
+	  			$orig_uri .= "widget_load=true";
 	  			$uri .= "&af_format=json";
 	  		}
 	  		
-	  		$this->browser->get($this->config->url.$uri);
-	  		$this->browser->checkForAuthenticationError();
-//			file_put_contents("./foo/".$widget, $this->browser->getResponseBody());
-	  		$this->totals[$this->browser->getStatusCode()][] = $this->browser->getStatusMessage();
-	  		$execTimeNumber = $this->browser->getResponseTime(true);
-	  		$execTime = $execTimeNumber.$this->config->time_unit;
-	  		$valid = $this->browser->isValidRequest($ajax);
-	  		
-	  		if(str_replace($this->config->time_unit, "", $execTimeNumber) > $this->config->limit && $ajax) {
-	  			$this->totals["overtime"][] = $entry;
-	  		}
-	  		
-	  		if($ajax) {
-	  			$this->processed[] = $entry;	
-	  			$this->totals["widgettotaltime"] += $execTimeNumber;
-	  			++$this->totals["widgets"];
-	  		} else {
-	  			$this->totals["layouttotaltime"] += $execTimeNumber;
-	  			++$this->totals["layouts"];
-	  		}	  	
-
-	  		++$this->totals[$valid];
-
-            if ($this->config->profiling) {
-                $token = $this->browser->getXDebugTokenHeaderValue();
-                $requestProfiler = $this->profiler->loadFromToken($token);
-                if(!$requestProfiler->isEmpty()) {
-                	$widgetDataCollector = $requestProfiler->get('widget');
-                	$actionTime = $widgetDataCollector->getActionTime().$this->config->time_unit;
-                	$propelDataCollector = $requestProfiler->get('propel');
-                	$renderTime = $widgetDataCollector->getRenderTime().$this->config->time_unit;
-                	$dbCount = $propelDataCollector->getQueriesCount();
-                    $dbTime = $propelDataCollector->getTotalQueriesTime();
-                    if ($dbTime != '') {
-                        $dbCount .= " ({$dbTime}ms)";
-                    }
+	  		$uris = ($this->widgetprocessing) ? array($uri,$orig_uri) : array($uri);
+	  	
+	  		foreach($uris as $uindex => $uri) {
+		  		
+	  			$this->browser->get($this->config->url.$uri);
+		  		//echo $this->browser->getResponseBody();
+		  		/*if($ajax) {
+		  			echo $this->browser->getResponseBody();
+		  		exit;	
+		  		}
+		  		*/
+		  		$this->browser->checkForAuthenticationError();
+				// file_put_contents("./foo/".$widget, $this->browser->getResponseBody());
+		  		$execTimeNumber = $this->browser->getTotalTime(true);
+		  		$execTime = $this->browser->getTotalTime();
+		  		$valid = $this->browser->isValidRequest($ajax);
+	
+		  		$status = $this->browser->getStatusCode();
+		  		$size = $this->browser->getResponseSize();
+		  		$speed = $this->browser->getDownloadSpeed();
+		  		
+		  		$serverTimeNumber = $this->browser->getServerTime(true);
+	  			$serverTime = $this->browser->getServerTime();
+	  			$transferTimeNumber = $this->browser->getTransferTime(true);
+	  			$transferTime = $this->browser->getTransferTime();
+	  			$connectTimeNumber = $this->browser->getConnectTime(true);
+	  			$connectTime = $this->browser->getConnectTime();
+		  	
+	            $csize = preg_replace("/[^0-9.]+/","",$size);
+		  		
+	            if($this->config->profiling) {
+		            $token = $this->browser->getXDebugTokenHeaderValue();
+	                $requestProfiler = $this->profiler->loadFromToken($token);
+	                
+	                if(!$requestProfiler->isEmpty()) {
+	                	$widgetDataCollector = $requestProfiler->get('widget');
+	                	$actionTimeNumber = $widgetDataCollector->getActionTime();
+	                	$actionTime = $actionTimeNumber.$this->config->time_unit;
+	                	$propelDataCollector = $requestProfiler->get('propel');
+	                	$renderTimeNumber = $widgetDataCollector->getRenderTime();
+	                	$renderTime = $renderTimeNumber.$this->config->time_unit;
+	                	$dbCount = $propelDataCollector->getQueriesCount();
+	                    $dbTime = $propelDataCollector->getTotalQueriesTime();
+	                    
+	                    if ($dbTime != '') {
+	                        $dbCount .= " ({$dbTime}ms)";
+	                    }
+	                
+	                } else {
+	                	$actionTime = $renderTime = $dbCount = "-";
+	                	if($valid == "true") {
+	                		--$this->totals[$valid];
+	                		++$this->totals["false"];
+	                		++$this->totals["noprofile"];
+	                		$valid = "false";
+	                	}
+	                }	
+	            } else {
+	            	$renderTimeNumber  = $actionTimeNumber = $serverTimeNumber = $transferTimeNumber = 
+	            	$connectTimeNumber = $dbCount = $dbTime = 0;
+	            }
                 
-                } else {
-                	$actionTime = $renderTime = $dbCount = "-";
-                	if($valid == "true") {
-                		--$this->totals[$valid];
-                		++$this->totals["false"];
-                		++$this->totals["noprofile"];
-                		$valid = "false";
+               
+	              
+                if($ajax && !$print && (($layout && $widget == $this->getLastWidget($widgets)) ||
+                ($this->widgetprocessing && $uindex == 1))) {
+                    	
+                	$print = true;
+                	
+                	//echo $execTime."\n";
+                	
+                	preg_match("/([0-9]+) \(([0-9]+)/",$dbCount,$match);
+                	
+                	$this->addItemTotal($connectTimeNumber,$actionTimeNumber,$renderTimeNumber,$serverTimeNumber,
+                	$transferTimeNumber,$execTimeNumber,$csize,$match[1],$match[2]);
+                	
+                	
+                	foreach($this->itemtotals as $key => $value) {
+                		$number = $key."Number";
+                		$$key = $$number = $value;
+                		if(strstr($key,"Time")) {
+                			$$key .= $this->config->time_unit;
+                		}	
+                		
                 	}
+                	
+                	$dbCount .=  " (".$dbTime.")";
+                	$size .= $this->config->size_unit;
+                	$this->resetItemTotals();	
+	                
+                	if($this->widgetprocessing) {
+              			
+                		if($this->itemtotals["status"] === 0 || $status != 200) {
+                			$this->itemtotals["status"] = $status;	
+                		}
+                		
+                		
+                		$this->itemtotals["valid"] = $valid;	
+                		
+                		if(str_replace($this->config->time_unit, "", $execTimeNumber) > $this->config->limit && $ajax) {
+	  						$this->totals["overtime"][] = $entry;
+	  					} 	
+	  					
+	  					$type = "widget";
+			  			++$this->totals["widgets"];
+                		
+                	} else {
+                		
+                		$type = "layout";
+			  			++$this->totals["layouts"];
+                	}	
+		  			
+		  			$this->totals["connecttime"] += $connectTimeNumber;
+			  		$this->totals[$type."totaltime"] += $execTimeNumber;
+			  		$this->totals[$type."rendertime"] += $renderTimeNumber;
+			        $this->totals[$type."actiontime"] += $actionTimeNumber;
+			        $this->totals[$type."servertime"] += $serverTimeNumber;
+			        $this->totals[$type."transfertime"] += $transferTimeNumber;
+                	
+			        $this->totals[$status][] = $this->browser->getStatusMessage($status);
+			        
+			        ++$this->totals[$valid];
+                	
                 }
-
-                $this->logBlock(
-                    $entry.str_repeat(" ",$max - (strlen($module."/".$widget)-6)).
-                        str_pad($this->browser->getStatusCode(), 6, ' ', STR_PAD_LEFT).
-                        '  '.
-                        str_pad($valid, 7, ' ', STR_PAD_LEFT).
-                        '  '.
-                        str_pad($execTime, 6, ' ', STR_PAD_LEFT).
-                        '  '.
-                        str_pad($actionTime, 12, ' ', STR_PAD_LEFT).
-                        '  '.
-                        str_pad($renderTime, 12, ' ', STR_PAD_LEFT).
-                        '  '.
-                        str_pad($dbCount, 14, ' ', STR_PAD_LEFT).
-                        '    '.
-                        str_pad($this->browser->getResponseSize(), 10, ' ', STR_PAD_LEFT),
-                    null
-                );
-            } else {
-                $this->logBlock(
-                    $entry.str_repeat(" ",$max - (strlen($module."/".$widget)-6)).
-                        str_pad($this->browser->getStatusCode(), 6, ' ', STR_PAD_LEFT).
-                        '  '.
-                        str_pad($valid, 7, ' ', STR_PAD_LEFT).
-                        '  '.
-                        str_pad($execTime, 6, ' ', STR_PAD_LEFT).
-                        '    '.
-                        str_pad($this->browser->getResponseSize(), 10, ' ', STR_PAD_LEFT),
-                    null
-                );
-
-            }
-	  		
-	  		if($this->config->mode == "*" && $ajax && $header && $k == count($entries)-1) {
-	  			$this->logBlock(" ",null);
-	  			$this->printHeader();
+	                
+                if($ajax && $print) {
+                	
+                	if(!$this->config->profiling) {
+                		$this->logBlock(
+	                    	$entry.str_repeat(" ",$max - (strlen($entry)-6)).
+	                        str_pad($status, 6, ' ', STR_PAD_LEFT).
+	                        '  '.
+	                        str_pad($valid, 7, ' ', STR_PAD_LEFT).
+	                        '  '.
+	                        str_pad($execTime, 9, ' ', STR_PAD_LEFT).
+	                        '    '.
+	                        str_pad($size, 10, ' ', STR_PAD_LEFT),
+                    	($valid === "true") ? null : "ERROR"
+                		);
+                
+                	} else {
+                		$this->logBlock(
+	                    	$entry.str_repeat(" ",$max - (strlen($entry)-6)).
+	                        str_pad($status, 6, ' ', STR_PAD_LEFT).
+	                        '  '.
+	                        str_pad($valid, 7, ' ', STR_PAD_LEFT).
+	                        '    '.
+	                        str_pad($connectTime, 11, ' ', STR_PAD_LEFT).
+	                        '    '.
+	                        str_pad($actionTime, 10, ' ', STR_PAD_LEFT).
+	                        '    '.
+	                        str_pad($renderTime, 10, ' ', STR_PAD_LEFT).
+	                        '    '.
+	                        str_pad($serverTime, 10, ' ', STR_PAD_LEFT).
+	                        '    '.
+	                        str_pad($transferTime, 12, ' ', STR_PAD_LEFT).
+	                        '    '.
+	                        str_pad($execTime, 9, ' ', STR_PAD_LEFT).
+	                        '    '.
+	                        str_pad($dbCount, 12, ' ', STR_PAD_LEFT).
+	                        '    '.
+	                        str_pad($speed, 12, ' ', STR_PAD_LEFT).
+	                        '    '.
+	                        str_pad($size, 10, ' ', STR_PAD_LEFT),
+	                    ($valid === "true") ? null : "ERROR"
+	                	);	
+                	}
+ 					               	
+                } else {
+ 
+                	preg_match("/([0-9]+) \(([0-9]+)/",$dbCount,$match);
+                	
+                	//echo $execTime."\n";
+                	
+                	$this->addItemTotal($connectTimeNumber,$actionTimeNumber,$renderTimeNumber,$serverTimeNumber,
+                	$transferTimeNumber,$execTimeNumber,$csize,$match[1],$match[2]);
+                	
+			        if(!$ajax || ($this->widgetprocessing && $uindex == 0)) {
+			        	$this->itemtotals["valid"] = $valid;
+			        	$this->itemtotals["entry"] = $entry;
+			        	$this->itemtotals["status"] = $status;
+			        	$this->itemtotals["speed"] = sprintf("%1.2f%s",$speed,$this->config->size_unit."/s");
+			        } 
+			        
+                } 
+	              		
 	  		}
 	  		
 			if(!$ajax) {
-		  		$this->executeWidgets($this->extractWidgetsFromLayout($this->layoutdir."/".$widget.".xml"),$entry,
-		  		(isset($this->widgets["pages"]) && array_search($widget, $this->widgets["pages"]) === count($this->widgets["pages"])-1));
+				$this->executeWidgets($this->extractWidgetsFromLayout($this->layoutdir."/".$widget.".xml"),$entry);
 		  	}
 	  	}
 	 }

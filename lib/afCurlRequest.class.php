@@ -28,7 +28,16 @@ class afCurlRequest {
 		$response,
 		$headers = array();
 		
+	
+	const 
+		NSLOOKUP = CURLINFO_NAMELOOKUP_TIME,
+		CONNECT = CURLINFO_CONNECT_TIME,
+		TRANSFER = -1,
+		TRANSFER_START = CURLINFO_STARTTRANSFER_TIME ,
+		TOTAL = CURLINFO_TOTAL_TIME ;
+		
 
+		
 	/**
 	 * 
 	 * Contructor.. Initializes curl and config
@@ -97,6 +106,32 @@ class afCurlRequest {
   		
   		return strlen($header);
   	}
+  	
+	/**
+	 * 
+	 * Returns the total request time in the selected time unit or as a number.
+	 * 
+	 * @param bool $numeric Whether to return time string or a number
+	 * @return mixed
+	 */
+	private function getResponseTime($numeric = false,$type) {
+		
+		
+		$value = curl_getinfo($this->handle,$type);
+		
+		switch($this->config->time_unit) {
+	  		case "s":
+	  			$res = sprintf("%1.2f",$value);
+	  			break;
+	  		case "ms":
+	  			$res = round($value*1000);
+	  			break;
+	  	}
+	  	
+	  	return ($numeric) ? $res : $res.$this->config->time_unit;
+		
+	
+	}
   	
   	/**
   	 * 
@@ -187,9 +222,9 @@ class afCurlRequest {
 	 * 
 	 * @return string
 	 */
-	public function getStatusMessage() {
+	public function getStatusMessage($code = null) {
 		
-		return $this->status_data[curl_getinfo($this->handle,CURLINFO_HTTP_CODE)];
+		return $this->status_data[($code) ? $code : curl_getinfo($this->handle,CURLINFO_HTTP_CODE)];
 	
 	}
 	
@@ -278,30 +313,50 @@ class afCurlRequest {
 	}
 	
 	/**
-	 * 
-	 * Returns the total request time in the selected time unit or as a number.
-	 * 
-	 * @param bool $numeric Whether to return time string or a number
-	 * @return mixed
+	 *  Returns average dowload speed in Bytes or Kbytes.
+	 *  
 	 */
-	public function getResponseTime($numeric = false) {
+	public function getDownloadSpeed() {
 		
-		
-		$value = curl_getinfo($this->handle,CURLINFO_TOTAL_TIME);
-		
-		switch($this->config->time_unit) {
-	  		case "s":
-	  			$res = sprintf("%1.2f",$value);
-	  			break;
-	  		case "ms":
-	  			$res = round($value*1000);
-	  			break;
-	  	}
-	  	
-	  	return ($numeric) ? $res : $res.$this->config->time_unit;
-		
+		$v = curl_getinfo($this->handle,CURLINFO_SPEED_DOWNLOAD);
+		return ($this->config->size_unit == "B") ? $v : $v/1024; 
 	
 	}
+	
+	
+	/**
+	 * Returns the sum of name resolving (DNS) and connection times.
+	 * 
+	 * 
+	 * @param boolean $numeric Whether or not just a number should be returned
+	 */
+	public function getConnectTime($numeric = false) {
+		
+		$v = $this->getResponseTime(true,CURLINFO_CONNECT_TIME) + $this->getResponseTime(true,CURLINFO_NAMELOOKUP_TIME);
+	
+		return ($numeric) ? $v : $v.$this->config->time_unit;
+		
+	}
+	
+	public function getTransferTime($numeric = false) {
+		
+		$res = ($this->getResponseTime(true,CURLINFO_TOTAL_TIME) -  $this->getResponseTime(true,CURLINFO_STARTTRANSFER_TIME));
+		return ($numeric) ? $res : $res.$this->config->time_unit;
+	
+	}
+	
+	public function getServerTime($numeric = false) {
+		
+		return $this->getResponseTime($numeric,CURLINFO_STARTTRANSFER_TIME);
+	
+	}
+	
+	public function getTotalTime($numeric = false) {
+		
+		return $this->getResponseTime($numeric,CURLINFO_TOTAL_TIME);
+	
+	}
+	
 	
 	/**
 	 * Sends AJAX header to let the server know this is a XmlHttpRequest
