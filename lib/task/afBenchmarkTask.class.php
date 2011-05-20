@@ -27,11 +27,13 @@ class afBenchmarkTask extends sfBaseTask
 	$totals = array(
 		"connecttime" => 0, 
 		"widgetactiontime" => 0, 
+		"widgetreadtime" => 0, 
 		"widgetrendertime" => 0,
 		"widgetservertime" => 0,  
 		"widgettransfertime" => 0,
 		"widgettotaltime" => 0,
-		"layoutactiontime" => 0, 
+		"layoutactiontime" => 0,
+		"layoutreadtime" => 0, 
 		"layoutrendertime" => 0,
 		"layoutservertime" => 0,  
 		"layouttransfertime" => 0,
@@ -44,7 +46,8 @@ class afBenchmarkTask extends sfBaseTask
 	),
 	$itemtotals = array(
 		"connectTime" => 0, 
-		"actionTime" => 0, 
+		"actionTime" => 0,
+		"readTime" => 0, 
 		"renderTime" => 0,
 		"serverTime" => 0,  
 		"transferTime" => 0,
@@ -335,6 +338,7 @@ EOF;
   	(
   	"connecttime" => "Connecting host",
   	"actiontime" => "Performing SF action",
+  	"readtime" => "Reading XML data",
   	"rendertime" => "Generation of content",
   	"servertime" => "Server processing total",
   	"transfertime" => "Transfer time",
@@ -392,7 +396,7 @@ EOF;
   	$max = $this->maxwidth-22;
   	
     if ($this->config->profiling) {
-        $text = "Widget".str_repeat(" ", $max)."Status    Valid    connectTime    actionTime    renderTime    serverTime    transferTime    totalTime    queriesCount    averageSpeed        Data";
+        $text = "Widget".str_repeat(" ", $max)."Status    Valid    connectTime    actionTime    readTime    renderTime    serverTime    transferTime    totalTime    queriesCount    averageSpeed        Data";
     } else {
         $text = "Widget".str_repeat(" ", $max)."Status    Valid    totalTime        Data";
     }
@@ -459,7 +463,8 @@ EOF;
    */
    private function getLastWidget($widgets) {
    	
-	 	return array_pop(array_pop($widgets));
+   		$v = array_pop($widgets);
+	 	return array_pop($v);
  	  
   }
   
@@ -531,7 +536,7 @@ EOF;
 	  		$uris = ($this->widgetprocessing) ? array($uri,$orig_uri) : array($uri);
 	  	
 	  		foreach($uris as $uindex => $uri) {
-		  		
+		  	
 	  			$this->browser->get($this->config->url.$uri);
 		  		//echo $this->browser->getResponseBody();
 		  		/*if($ajax) {
@@ -571,6 +576,7 @@ EOF;
 	                	$renderTime = $renderTimeNumber.$this->config->time_unit;
 	                	$dbCount = $propelDataCollector->getQueriesCount();
 	                    $dbTime = $propelDataCollector->getTotalQueriesTime();
+	                    $readTimeNumber = $widgetDataCollector->getReadTime();
 	                    
 	                    if ($dbTime != '') {
 	                        $dbCount .= " ({$dbTime}ms)";
@@ -586,7 +592,7 @@ EOF;
 	                	}
 	                }	
 	            } else {
-	            	$renderTimeNumber  = $actionTimeNumber = $serverTimeNumber = $transferTimeNumber = 
+	            	$renderTimeNumber  = $actionTimeNumber = $serverTimeNumber = $readTimeNumber = $transferTimeNumber = 
 	            	$connectTimeNumber = $dbCount = $dbTime = 0;
 	            }
                 
@@ -597,11 +603,15 @@ EOF;
                     	
                 	$print = true;
                 	
-                	//echo $execTime."\n";
+                	//echo $readTimeNumber."\n";
                 	
                 	preg_match("/([0-9]+) \(([0-9]+)/",$dbCount,$match);
                 	
-                	$this->addItemTotal($connectTimeNumber,$actionTimeNumber,$renderTimeNumber,$serverTimeNumber,
+                	if(!$match) {
+                		$match = array(0,0,0);
+                	}
+                	
+                	$this->addItemTotal($connectTimeNumber,$actionTimeNumber,$readTimeNumber,$renderTimeNumber,$serverTimeNumber,
                 	$transferTimeNumber,$execTimeNumber,$csize,$match[1],$match[2]);
                 	
                 	
@@ -646,6 +656,7 @@ EOF;
 			        $this->totals[$type."actiontime"] += $actionTimeNumber;
 			        $this->totals[$type."servertime"] += $serverTimeNumber;
 			        $this->totals[$type."transfertime"] += $transferTimeNumber;
+			        $this->totals[$type."readtime"] += $readTimeNumber;
                 	
 			        $this->totals[$status][] = $this->browser->getStatusMessage($status);
 			        
@@ -679,6 +690,8 @@ EOF;
 	                        '    '.
 	                        str_pad($actionTime, 10, ' ', STR_PAD_LEFT).
 	                        '    '.
+	                        str_pad($readTime, 8, ' ', STR_PAD_LEFT).
+	                        '    '.
 	                        str_pad($renderTime, 10, ' ', STR_PAD_LEFT).
 	                        '    '.
 	                        str_pad($serverTime, 10, ' ', STR_PAD_LEFT).
@@ -700,9 +713,13 @@ EOF;
  
                 	preg_match("/([0-9]+) \(([0-9]+)/",$dbCount,$match);
                 	
-                	//echo $execTime."\n";
+                	if(!$match) {
+                		$match = array(0,0,0);
+                	}
                 	
-                	$this->addItemTotal($connectTimeNumber,$actionTimeNumber,$renderTimeNumber,$serverTimeNumber,
+                	//echo $readTimeNumber."\n";
+                	
+                	$this->addItemTotal($connectTimeNumber,$actionTimeNumber,$readTimeNumber,$renderTimeNumber,$serverTimeNumber,
                 	$transferTimeNumber,$execTimeNumber,$csize,$match[1],$match[2]);
                 	
 			        if(!$ajax || ($this->widgetprocessing && $uindex == 0)) {
