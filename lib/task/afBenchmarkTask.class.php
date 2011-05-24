@@ -328,7 +328,7 @@ EOF;
   			continue;
   		}
   		$str = $code." - ".$totals[0];
-  		$this->logBlock(sprintf("%s%s%d",$str,str_repeat(" ", $this->linewidth-strlen($str)),count($totals)),"INFO");
+  		$this->logBlock(sprintf("%s %s%d",$str,str_repeat(".", 32-strlen($str)),count($totals)),"INFO");
   		$w += count($totals);
   	}
   	
@@ -358,7 +358,7 @@ EOF;
 	  				$value = $this->totals[$tk] / $this->totals[$sk];
 	  			}
 	  			
-	  			$this->logBlock(sprintf("%s: %1.2f%s",$label,$value,$this->config->time_unit),"INFO");	
+	  			$this->logBlock(sprintf("%s: %s%s",$label,$this->formatNumber($value),$this->config->time_unit),"INFO");	
 	  		}
 	  	}	
   	}
@@ -368,7 +368,7 @@ EOF;
   	$this->logBlock(" ",null);
   	
   	$this->logSection(sprintf("Finished at: %s",date("Y-m-d H:i:s")),null,null,"INFO");
-  	$this->logSection(sprintf("Executed %d item(s) in %s%s",$this->totals["widgets"]+$this->totals["layouts"],number_format($this->totals["widgettotaltime"]+$this->totals["layouttotaltime"],2),$this->config->time_unit),null,null,"INFO");
+  	$this->logSection(sprintf("Executed %d item(s) in %s%s",$this->totals["widgets"]+$this->totals["layouts"],number_format($this->totals["widgettotaltime"]+$this->totals["layouttotaltime"],0,null,'.'),$this->config->time_unit),null,null,"INFO");
   	$overtime = isset($this->totals["overtime"]) ? count($this->totals["overtime"]) : 0;
   		
   	if($this->totals["false"]) {
@@ -486,7 +486,15 @@ EOF;
    		
    		++$this->itemtotals["itemcount"];
    		
-   } 
+   }
+
+   
+   private function formatNumber($number) {
+   	
+   		$number = number_format(preg_replace("/[^0-9.]+/","",$number),2,',','.');
+   		return (strstr($number,",00")) ? substr($number,0,-3) : $number;
+   	
+   }
   
   
   /**
@@ -613,8 +621,7 @@ EOF;
                 	
                 	$this->addItemTotal($connectTimeNumber,$actionTimeNumber,$readTimeNumber,$renderTimeNumber,$serverTimeNumber,
                 	$transferTimeNumber,$execTimeNumber,$csize,$match[1],$match[2]);
-                	
-                	
+                		
                 	foreach($this->itemtotals as $key => $value) {
                 		$number = $key."Number";
                 		$$key = $$number = $value;
@@ -625,7 +632,8 @@ EOF;
                 	}
                 	
                 	$dbCount .=  " (".$dbTime.")";
-                	$size .= $this->config->size_unit;
+                	$size = $this->formatNumber($size).$this->config->size_unit;
+                	$speed = $this->formatNumber($speed)."KB/s";
                 	$this->resetItemTotals();	
 	                
                 	if($this->widgetprocessing) {
